@@ -30,7 +30,7 @@ load goal.yaml + STATUS.md
    in-flight? poll devclaw  → running ⇒ exit (nothing to do)
                             → terminal ⇒ feed result to the plan step
    else: new steering in inbox.md? cadence due (and not blocked)?  → plan, else exit
-── plan (claude --print, ONLY past the gate) ──
+── plan (Claude Agent SDK, ONLY past the gate) ──
    goal + state + history + steering + finished-result → JSON {act|sleep|blocked|done}
 ── dispatch ── route the one action to its engine (devclaw MCP), record the id
 ── persist ── overwrite STATUS.md, append log.md

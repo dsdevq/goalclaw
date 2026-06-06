@@ -13,7 +13,6 @@ from typing import Awaitable, Callable
 
 from .models import Action, Goal, GoalStatus, PlanResult
 
-CLAUDE_BIN = os.environ.get("GOALCLAW_CLAUDE_BIN", "claude")
 PLANNER_TIMEOUT_MS = int(os.environ.get("GOALCLAW_PLANNER_TIMEOUT_MS", "90000"))
 
 ClaudeCaller = Callable[[str], Awaitable[str]]
@@ -183,41 +182,56 @@ async def plan(
     return validate(parsed)
 
 
-# ---- default cognition caller (mirrors devclaw.planner.call_claude) ----------
-
-
-def _build_claude_argv(prompt: str, model: str | None) -> list[str]:
-    argv = [CLAUDE_BIN, "--print", "--output-format=text"]
-    if model:
-        argv += ["--model", model]
-    argv.append(prompt)
-    return argv
+# ---- default cognition caller (Claude Agent SDK) -----------------------------
+#
+# Uses the Python Claude Agent SDK instead of shelling out to `claude --print`:
+# the supported programmatic interface, not stdout-scraping a CLI. Same cost
+# model — it authenticates against the bind-mounted Pro/Max OAuth session at
+# ~/.claude (no API key, ever). A single non-agentic turn (no tools, no fs
+# access) is the `claude --print` equivalent — the planner is pure reasoning;
+# the engine (devclaw) owns tool use.
 
 
 async def call_claude(prompt: str, model: str | None = None) -> str:
-    env = dict(os.environ)
-    env.pop("ANTHROPIC_API_KEY", None)
-    env.pop("ANTHROPIC_AUTH_TOKEN", None)
+    """One-shot, tool-less Claude call via the Agent SDK → assistant text.
+
+    Imported lazily so unit tests (which inject a fake caller) don't need the SDK
+    installed. ``model`` selects the tier (alias/full id); None → account default.
+    """
+    # Belt + suspenders: the Agent SDK SILENTLY prefers ANTHROPIC_API_KEY (API
+    # billing) if set — we bill the subscription via the OAuth session only.
+    os.environ.pop("ANTHROPIC_API_KEY", None)
+    os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)
+
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *_build_claude_argv(prompt, model),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-        )
-    except OSError as exc:
-        raise PlannerError(f"Failed to spawn {CLAUDE_BIN}: {exc}") from exc
+        from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, query
+    except ImportError as exc:  # pragma: no cover
+        raise PlannerError(f"claude-agent-sdk not installed: {exc}") from exc
+
+    opts_kwargs: dict = {"allowed_tools": [], "max_turns": 1}
+    if model:
+        opts_kwargs["model"] = model
+    options = ClaudeAgentOptions(**opts_kwargs)
+
+    async def _collect() -> str:
+        text = ""
+        async for message in query(prompt=prompt, options=options):
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    chunk = getattr(block, "text", None)
+                    if chunk:
+                        text += chunk
+        return text
+
     try:
-        out_b, err_b = await asyncio.wait_for(proc.communicate(), timeout=PLANNER_TIMEOUT_MS / 1000)
+        text = await asyncio.wait_for(_collect(), timeout=PLANNER_TIMEOUT_MS / 1000)
     except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
-        raise PlannerError(f"claude --print timed out after {PLANNER_TIMEOUT_MS}ms")
-    if proc.returncode != 0:
-        raise PlannerError(
-            f"claude --print exited {proc.returncode}. stderr:\n{err_b.decode('utf-8', 'replace')}"
-        )
-    return out_b.decode("utf-8", "replace")
+        raise PlannerError(f"Agent SDK query timed out after {PLANNER_TIMEOUT_MS}ms")
+    except Exception as exc:  # noqa: BLE001 — surface uniformly as PlannerError
+        raise PlannerError(f"Agent SDK query failed: {exc}") from exc
+    if not text.strip():
+        raise PlannerError("Agent SDK returned empty text")
+    return text
 
 
 def claude_with_model(model: str | None) -> ClaudeCaller:

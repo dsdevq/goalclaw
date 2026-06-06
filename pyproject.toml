@@ -7,6 +7,9 @@ dependencies = [
     "fastmcp>=3.3",
     "httpx>=0.27",
     "pyyaml>=6",
+    # The plan step's cognition — the supported programmatic interface to Claude
+    # Code, on the Pro/Max OAuth session (no API key). Replaces `claude --print`.
+    "claude-agent-sdk>=0.2",
 ]
 
 [project.scripts]
