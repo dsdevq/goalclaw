@@ -58,9 +58,15 @@ See `examples/lifekit-dashboard.goal.yaml` for a goal definition.
 
 ```bash
 pip install -e ".[dev]"
-python -m goalclaw tick            # one heartbeat over every goal (what the timer fires)
+python -m goalclaw tick            # one heartbeat over every goal (one-shot)
+python -m goalclaw loop            # resident heartbeat — tick every GOALCLAW_TICK_INTERVAL_SECONDS (the container CMD)
 python -m goalclaw status          # print each goal's phase
 ```
+
+Deployed as a small always-on container (mirrors `lifekit-curator`) running
+`goalclaw loop`. Idle ticks cost ~0 tokens, so a tight interval is cheap; state
+lives on disk, so a restart just resumes. (`tick` stays one-shot, so a
+systemd-timer model is a trivial swap.)
 
 Config is env (see `goalclaw/config.py`): `GOALCLAW_GOALS_DIR`, `DEVCLAW_URL`,
 `DEVCLAW_TOKEN`, `GOALCLAW_NOTIFY_URL`, `GOALCLAW_PLANNER_MODEL` (default

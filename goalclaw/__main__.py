@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 
 from .config import Config
@@ -34,6 +35,24 @@ async def _run_tick(cfg: Config) -> int:
     return 0
 
 
+async def _run_loop(cfg: Config) -> int:
+    """Resident heartbeat — tick every GOALCLAW_TICK_INTERVAL_SECONDS forever.
+
+    The container CMD. Each tick is independent and idle ticks cost ~0 tokens
+    (the cheap check gates the LLM), so a tight interval is cheap. State lives on
+    disk, so a crash/restart just resumes — the durable-mind invariant holds even
+    though the process is resident rather than timer-spawned.
+    """
+    interval = int(os.environ.get("GOALCLAW_TICK_INTERVAL_SECONDS", "900"))
+    print(f"goalclaw loop: ticking every {interval}s over {cfg.goals_dir}", flush=True)
+    while True:
+        try:
+            await _run_tick(cfg)
+        except Exception as exc:  # noqa: BLE001 — a tick crash must not kill the loop
+            print(f"tick crashed: {exc}", file=sys.stderr, flush=True)
+        await asyncio.sleep(interval)
+
+
 def _print_status(cfg: Config, goal_id: str | None) -> int:
     store = GoalStore(cfg.goals_dir)
     ids = [goal_id] if goal_id else store.list_goal_ids()
@@ -53,9 +72,11 @@ def main(argv: list[str] | None = None) -> int:
     cfg = Config.from_env()
     if cmd == "tick":
         return asyncio.run(_run_tick(cfg))
+    if cmd == "loop":
+        return asyncio.run(_run_loop(cfg))
     if cmd == "status":
         return _print_status(cfg, args[1] if len(args) > 1 else None)
-    print(f"usage: goalclaw [tick|status [goal_id]]  (got {cmd!r})", file=sys.stderr)
+    print(f"usage: goalclaw [tick|loop|status [goal_id]]  (got {cmd!r})", file=sys.stderr)
     return 2
 
 
