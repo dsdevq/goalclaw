@@ -80,19 +80,38 @@ class HttpDevclawClient:
             data = await self._call("get_program", {"program_id": ref.id})
         else:
             data = await self._call("get_status", {"task_id": ref.id})
-        status = str(data.get("status", "")).lower()
-        terminal = status in _TERMINAL
-        pr_url = data.get("pr_url") or None
-        gate_passed = _gate_passed(data)
-        return PollResult(
-            terminal=terminal, status=status, detail=json.dumps(data)[:4000],
-            pr_url=pr_url, gate_passed=gate_passed,
-        )
+        return parse_poll(data, ref.ref_kind)
+
+
+def parse_poll(data: dict, ref_kind: str = "task") -> PollResult:
+    """Build a PollResult from a devclaw get_status / get_program response.
+
+    devclaw's wire shape is **camelCase** (``StateStore.to_dict`` mirrors the
+    original TS output: ``prUrl`` / ``resultJson``), so read those first and
+    tolerate snake_case as a fallback. Without this the delivery evidence is
+    silently dropped — ``pr_url``/``gate_passed`` come back None even on a
+    shipped+gated task, and the planner, starved of structured signal, misreads
+    the raw detail blob and re-dispatches or blocks. ``get_program`` wraps the
+    row under ``"program"``.
+    """
+    row = data.get("program", data) if ref_kind == "program" else data
+    status = str(row.get("status", "")).lower()
+    pr_url = row.get("prUrl") or row.get("pr_url") or None
+    return PollResult(
+        terminal=status in _TERMINAL,
+        status=status,
+        detail=json.dumps(data)[:4000],
+        pr_url=pr_url,
+        gate_passed=_gate_passed(row),
+    )
 
 
 def _gate_passed(data: dict) -> "bool | None":
-    """Pull the verify-gate verdict out of a devclaw task row, if it ran."""
-    rj = data.get("result_json")
+    """Pull the verify-gate verdict out of a devclaw task row, if it ran.
+    devclaw emits ``resultJson`` (camelCase); tolerate ``result_json`` too."""
+    rj = data.get("resultJson")
+    if rj is None:
+        rj = data.get("result_json")
     if isinstance(rj, str):
         try:
             rj = json.loads(rj)
