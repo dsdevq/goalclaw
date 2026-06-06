@@ -92,6 +92,7 @@ class GoalStore:
             last_plan_at=fm.get("last_plan_at") or None,
             last_tick_at=fm.get("last_tick_at") or None,
             inbox_cursor=int(fm.get("inbox_cursor", 0)),
+            actions_dispatched=int(fm.get("actions_dispatched", 0)),
         )
 
     def save_status(self, goal_id: str, status: GoalStatus) -> None:
@@ -113,6 +114,7 @@ class GoalStore:
             "last_plan_at": status.last_plan_at,
             "last_tick_at": status.last_tick_at,
             "inbox_cursor": status.inbox_cursor,
+            "actions_dispatched": status.actions_dispatched,
         }
         body = self._render_status_body(goal_id, status)
         text = "---\n" + yaml.safe_dump(fm, sort_keys=False).rstrip() + "\n---\n\n" + body

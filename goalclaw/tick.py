@@ -60,12 +60,21 @@ async def tick_goal(
         if poll.running:
             store.save_status(goal_id, replace(status, last_tick_at=store.now_iso()))
             return Outcome.IN_FLIGHT
-        # terminal → fold the result back into the next plan
+        # terminal → record DELIVERY EVIDENCE (PR url + gate) so the planner can
+        # see the item shipped and mark it done — without this it re-dispatches.
+        evidence = []
+        if poll.pr_url:
+            evidence.append(f"PR {poll.pr_url}")
+        if poll.gate_passed is not None:
+            evidence.append("gate=passed" if poll.gate_passed else "gate=FAILED")
+        ev_str = (" — " + ", ".join(evidence)) if evidence else ""
+        store.append_log(
+            goal_id, f"{status.in_flight.tool} {status.in_flight.id} → {poll.status}{ev_str}"
+        )
         finished_detail = (
             f"tool={status.in_flight.tool} id={status.in_flight.id} "
-            f"status={poll.status}\n{poll.detail}"
+            f"status={poll.status}{ev_str}\n{poll.detail}"
         )
-        store.append_log(goal_id, f"{status.in_flight.tool} {status.in_flight.id} → {poll.status}")
         status = replace(status, in_flight=None, phase="idle")
 
     steering = store.unread_steering(goal_id, status)
@@ -118,6 +127,18 @@ async def tick_goal(
 
     # decision == "act"
     action = result.actions[0]
+    # Runaway backstop (mechanism, not cognition): never spawn more than
+    # backlog-size + a small margin of engine actions for one goal without a
+    # human. A looping planner can't burn unbounded quota — it blocks instead.
+    cap = len(goal.backlog) + 2
+    if base.actions_dispatched >= cap:
+        store.append_log(goal_id, f"dispatch cap {cap} reached — blocking for review")
+        store.save_status(
+            goal_id,
+            replace(base, phase="blocked", blocked_on=f"dispatch cap {cap} reached — review the open PRs"),
+        )
+        await notifier.send(f"🛑 [{goal_id}] dispatch cap ({cap}) reached — paused for your review")
+        return Outcome.BLOCKED
     # Give the engine a pristine checkout at latest origin/default — so this
     # action doesn't pile onto a previous action's branch (per-action freshness).
     try:
@@ -136,7 +157,10 @@ async def tick_goal(
         return Outcome.ERROR
     store.save_status(
         goal_id,
-        replace(base, phase="in_flight", in_flight=ref, blocked_on=None, next=action.goal),
+        replace(
+            base, phase="in_flight", in_flight=ref, blocked_on=None, next=action.goal,
+            actions_dispatched=base.actions_dispatched + 1,
+        ),
     )
     store.append_log(goal_id, f"dispatched {action.tool}: {action.goal} → {ref.id}")
     await notifier.send(f"🚀 [{goal_id}] {action.tool}: {action.goal}  ({ref.id})")

@@ -209,6 +209,48 @@ async def test_blocked_goal_resumes_on_steering(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_pr_evidence_logged_on_done(tmp_path):
+    # The fix for the re-dispatch loop: a finished task's PR url + gate must land
+    # in the log so the planner sees the item shipped.
+    clock = Clock()
+    store = _store(tmp_path, clock)
+    seed_goal(tmp_path, "g")
+    store.save_status(
+        "g", GoalStatus(phase="in_flight", in_flight=InFlight("devclaw", "implement_feature", "t1", "task", "x")),
+    )
+    devclaw = FakeDevclaw(
+        poll_result=PollResult(
+            terminal=True, status="done", pr_url="https://github.com/o/r/pull/9", gate_passed=True
+        )
+    )
+    claude = FakeClaude(json.dumps({"decision": "done", "note": "shipped"}))
+    notifier = RecordingNotifier()
+
+    await _tick(store, "g", claude, devclaw, notifier)
+
+    recent = store.recent_log("g")
+    assert "PR https://github.com/o/r/pull/9" in recent
+    assert "gate=passed" in recent
+    assert "PR https://github.com/o/r/pull/9" in claude.last_prompt  # planner sees it too
+
+
+@pytest.mark.asyncio
+async def test_dispatch_cap_blocks_runaway(tmp_path):
+    clock = Clock()
+    store = _store(tmp_path, clock)
+    seed_goal(tmp_path, "g")  # backlog 2 → cap = 4
+    store.save_status("g", GoalStatus(phase="idle", actions_dispatched=4))  # already at cap
+    claude, devclaw, notifier = FakeClaude(ACT), FakeDevclaw(), RecordingNotifier()
+
+    out = await _tick(store, "g", claude, devclaw, notifier)
+
+    assert out is Outcome.BLOCKED
+    assert devclaw.dispatched == []  # refused to spawn another run
+    assert store.load_status("g").phase == "blocked"
+    assert any("cap" in m for m in notifier.sent)
+
+
+@pytest.mark.asyncio
 async def test_planner_done(tmp_path):
     clock = Clock()
     store = _store(tmp_path, clock)

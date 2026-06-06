@@ -68,6 +68,8 @@ class GoalStatus:
     last_tick_at: Optional[str] = None
     #: number of inbox.md lines already consumed as steering
     inbox_cursor: int = 0
+    #: total engine actions dispatched for this goal — a runaway backstop
+    actions_dispatched: int = 0
 
 
 @dataclass(frozen=True)
@@ -103,6 +105,10 @@ class PollResult:
     status: str
     #: devclaw's full result/error blob, surfaced to the planner on terminal
     detail: str = ""
+    #: delivery evidence — the PR url devclaw opened (None if not delivered)
+    pr_url: Optional[str] = None
+    #: verify-gate verdict (None if no gate ran)
+    gate_passed: Optional[bool] = None
 
     @property
     def running(self) -> bool:

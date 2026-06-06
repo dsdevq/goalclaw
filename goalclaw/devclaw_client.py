@@ -82,7 +82,26 @@ class HttpDevclawClient:
             data = await self._call("get_status", {"task_id": ref.id})
         status = str(data.get("status", "")).lower()
         terminal = status in _TERMINAL
-        return PollResult(terminal=terminal, status=status, detail=json.dumps(data)[:4000])
+        pr_url = data.get("pr_url") or None
+        gate_passed = _gate_passed(data)
+        return PollResult(
+            terminal=terminal, status=status, detail=json.dumps(data)[:4000],
+            pr_url=pr_url, gate_passed=gate_passed,
+        )
+
+
+def _gate_passed(data: dict) -> "bool | None":
+    """Pull the verify-gate verdict out of a devclaw task row, if it ran."""
+    rj = data.get("result_json")
+    if isinstance(rj, str):
+        try:
+            rj = json.loads(rj)
+        except json.JSONDecodeError:
+            return None
+    verify = rj.get("verify") if isinstance(rj, dict) else None
+    if isinstance(verify, dict) and "passed" in verify:
+        return bool(verify["passed"])
+    return None
 
 
 def _req(data: dict, key: str) -> str:
