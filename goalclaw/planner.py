@@ -51,7 +51,15 @@ Rules:
   "review_repository" for a read-only assessment.
 - Block ONLY when you genuinely need a human decision (ambiguous requirement,
   external credential, product call). Asking is friction — prefer to act.
-- Mark "done" only when done_when is satisfied by the history.
+- DELIVERY EVIDENCE is required to call a backlog item shipped. The engine
+  returning "ok"/"completed" only means its agent loop finished — NOT that the
+  change was verified or delivered. Before treating an item as done, the finished
+  result must show it was gate-verified AND delivered (e.g. a PR url, or an
+  explicit passed gate verdict). If the finished result lacks that evidence (bare
+  "ok", no PR, no gate), the item is NOT shipped: re-dispatch it (optionally with
+  a tighter instruction) or, if it keeps failing, block and ask Denys.
+- Mark "done" only when done_when is satisfied by the history AND every required
+  item has delivery evidence in the log.
 
 Respond with STRICT JSON ONLY — no prose, no markdown fences. Schema:
 
