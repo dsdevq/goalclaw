@@ -1,4 +1,24 @@
-# GoalClaw
+# GoalClaw — RETIRED (folded into devclaw, 2026-06-06)
+
+> ⚠️ **This project is retired.** The goal layer is now an in-process subsystem of
+> **[devclaw](https://github.com/dsdevq/devclaw)** — DevClaw became the
+> software-development project manager: it owns durable goals, drives them to PRs,
+> and evaluates direction, all in one service. There is no longer a separate
+> goalclaw container or HTTP MCP hop; dispatch is in-process.
+>
+> The decision (N=1: code is the only real engine, so a separate generic goal-layer
+> was premature generalization — build it specific inside devclaw, extract later if a
+> 2nd domain needs it) superseded the earlier keep-two recommendation.
+>
+> - Where the code went: `devclaw/goal_*.py` + `workspace.py` (planner →
+>   `goal_planner.py`, tick → `goal_tick.py`, the new direction evaluator →
+>   `goal_evaluator.py`, the HTTP client → in-process `goal_engine.py`).
+> - How to use it now: the `create_goal` / `get_goal` / `list_goals` / `steer_goal`
+>   / `evaluate_goal` MCP tools on devclaw. See devclaw's README + `docs/architecture-v2.md`.
+>
+> This repo is kept read-only for history. Nothing here is deployed.
+
+---
 
 The **goal-layer planner** — the orchestration *above* the engines.
 
