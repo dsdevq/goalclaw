@@ -1,0 +1,32 @@
+# Example goal — the first real GoalClaw goal: drive lifekit-dashboard to done.
+# At deploy, copy to ~/memory/goals/lifekit-dashboard/goal.yaml and set
+# workspace_dir to the repo checkout path inside the goalclaw container, then
+# replace the backlog with the actual next features you want shipped.
+
+objective: >
+  Drive the lifekit-dashboard repo forward feature-by-feature — each backlog item
+  delivered as a verify-gated PR I review — until the backlog is empty.
+
+# Heartbeat: how often to wake and consider advancing (even with no event/steering).
+cadence: 6h
+
+engine: devclaw
+# Path to the lifekit-dashboard checkout the engine works in (set at deploy).
+workspace_dir: /repos/lifekit-dashboard
+
+# The gate devclaw runs after the agent — "the agent's done is not trusted".
+# lifekit-dashboard backend is .NET (see devclaw's 5/5 run on this repo).
+verify_cmd: "cd backend && dotnet test"
+
+# Deliver every change as a PR to review.
+open_pr: true
+
+done_when: >
+  Every backlog item below has shipped as a merged PR with a green verify gate,
+  and no item remains.
+
+# Real, bounded, machine-verifiable backend items (replace with your actual list).
+backlog:
+  - Add a GET /api/health endpoint returning service status + version, with a test.
+  - Add structured request logging middleware (method, path, status, duration).
+  - Add a GET /api/goals endpoint that lists goal STATUS from the vault goals dir.
