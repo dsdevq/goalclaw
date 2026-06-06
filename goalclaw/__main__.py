@@ -24,12 +24,16 @@ async def _run_tick(cfg: Config) -> int:
     devclaw = HttpDevclawClient(cfg.devclaw_url, cfg.devclaw_token)
     notifier = HttpNotifier(cfg.notify_url) if cfg.notify_url else NullNotifier()
     claude_caller = claude_with_model(cfg.planner_model)
+    # goalclaw is the SOLE notifier (it polls devclaw and notifies at the goal
+    # level). We deliberately forward no callback URL to devclaw — its task-row
+    # callback shape doesn't match goalclaw's /text endpoint, and a second,
+    # task-level ping would just be redundant noise.
     outcomes = await tick_all(
         store=store,
         devclaw=devclaw,
         claude_caller=claude_caller,
         notifier=notifier,
-        notify_url=cfg.notify_url,
+        notify_url="",
     )
     print(json.dumps({gid: o.value for gid, o in outcomes.items()}, indent=2))
     return 0
