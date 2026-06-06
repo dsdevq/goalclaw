@@ -27,6 +27,9 @@ class Goal:
     cadence: str
     engine: Engine
     workspace_dir: str
+    #: git URL of the target repo — goalclaw clones it if workspace_dir is empty,
+    #: and resets to its default branch before each action. None → must pre-exist.
+    repo_url: Optional[str] = None
     #: gate command devclaw runs after the agent ("the agent's done is not trusted")
     verify_cmd: Optional[str] = None
     #: when True, devclaw delivers each change as a PR to review

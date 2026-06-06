@@ -13,13 +13,18 @@ from __future__ import annotations
 
 from dataclasses import replace
 from enum import Enum
+from typing import Awaitable, Callable
 
 from . import planner as _planner
 from .devclaw_client import DevclawClient
 from .goal_store import GoalStore
-from .models import GoalStatus
+from .models import Goal, GoalStatus
 from .notify import Notifier
 from .planner import ClaudeCaller
+from .workspace import WorkspaceError, prepare_workspace
+
+#: (workspace_dir, repo_url) -> default branch. Injected so tests pass a no-op.
+WorkspacePrep = Callable[[str, "str | None"], Awaitable[str]]
 
 
 class Outcome(str, Enum):
@@ -41,6 +46,7 @@ async def tick_goal(
     claude_caller: ClaudeCaller,
     notifier: Notifier,
     notify_url: str = "",
+    prepare_ws: WorkspacePrep = prepare_workspace,
 ) -> Outcome:
     goal = store.load_goal(goal_id)
     status = store.load_status(goal_id)
@@ -112,6 +118,15 @@ async def tick_goal(
 
     # decision == "act"
     action = result.actions[0]
+    # Give the engine a pristine checkout at latest origin/default — so this
+    # action doesn't pile onto a previous action's branch (per-action freshness).
+    try:
+        await prepare_ws(goal.workspace_dir, goal.repo_url)
+    except WorkspaceError as exc:
+        store.append_log(goal_id, f"workspace prep failed: {exc}")
+        store.save_status(goal_id, replace(base, phase="idle", next=action.goal))
+        await notifier.send(f"⚠️ [{goal_id}] workspace prep failed: {exc}")
+        return Outcome.ERROR
     try:
         ref = await devclaw.dispatch(action, goal, notify_url)
     except Exception as exc:  # noqa: BLE001 — record + notify, retry next cadence
@@ -135,6 +150,7 @@ async def tick_all(
     claude_caller: ClaudeCaller,
     notifier: Notifier,
     notify_url: str = "",
+    prepare_ws: WorkspacePrep = prepare_workspace,
 ) -> dict[str, Outcome]:
     """Tick every goal. One goal's failure never stops the others."""
     outcomes: dict[str, Outcome] = {}
@@ -147,6 +163,7 @@ async def tick_all(
                 claude_caller=claude_caller,
                 notifier=notifier,
                 notify_url=notify_url,
+                prepare_ws=prepare_ws,
             )
         except Exception:  # noqa: BLE001 — isolate per-goal blast radius
             store.append_log(goal_id, "tick crashed (uncaught)")

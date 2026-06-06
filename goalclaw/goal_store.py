@@ -63,6 +63,7 @@ class GoalStore:
             cadence=str(raw.get("cadence", "1d")),
             engine=raw.get("engine", "devclaw"),
             workspace_dir=str(raw["workspace_dir"]),
+            repo_url=(str(raw["repo_url"]) if raw.get("repo_url") else None),
             verify_cmd=raw.get("verify_cmd") or None,
             open_pr=bool(raw.get("open_pr", True)),
             done_when=str(raw.get("done_when", "")).strip(),

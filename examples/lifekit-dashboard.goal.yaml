@@ -11,8 +11,11 @@ objective: >
 cadence: 6h
 
 engine: devclaw
-# Path to the lifekit-dashboard checkout the engine works in (set at deploy).
-workspace_dir: /repos/lifekit-dashboard
+# Path to the workspace checkout the engine works in (devclaw-mcp's view).
+workspace_dir: /var/lib/devclaw/workspaces/lifekit-dashboard
+# Repo to drive. goalclaw clones it here if the workspace is empty, and resets
+# it to the default branch at latest origin before EACH action (freshness).
+repo_url: https://github.com/dsdevq/lifekit-dashboard.git
 
 # The gate devclaw runs after the agent — "the agent's done is not trusted".
 # lifekit-dashboard backend is .NET (see devclaw's 5/5 run on this repo).

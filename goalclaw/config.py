@@ -31,6 +31,10 @@ class Config:
     claude_bin: str
     #: plan-step wall-clock budget
     planner_timeout_ms: int
+    #: URL devclaw should call back on task-done (= goalclaw's own /wake). ""→off.
+    wake_url: str
+    #: port the wake server binds inside the container
+    wake_port: int
 
     @staticmethod
     def from_env() -> "Config":
@@ -42,4 +46,6 @@ class Config:
             planner_model=os.environ.get("GOALCLAW_PLANNER_MODEL", "sonnet") or None,
             claude_bin=os.environ.get("GOALCLAW_CLAUDE_BIN", "claude"),
             planner_timeout_ms=int(os.environ.get("GOALCLAW_PLANNER_TIMEOUT_MS", "90000")),
+            wake_url=os.environ.get("GOALCLAW_WAKE_URL", ""),
+            wake_port=int(os.environ.get("GOALCLAW_WAKE_PORT", "8500")),
         )

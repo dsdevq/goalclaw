@@ -14,7 +14,7 @@ import pytest
 from goalclaw.goal_store import GoalStore
 from goalclaw.models import GoalStatus, InFlight, PollResult
 from goalclaw.tick import Outcome, tick_goal
-from tests._fakes import Clock, FakeClaude, FakeDevclaw, RecordingNotifier, seed_goal
+from tests._fakes import Clock, FakeClaude, FakeDevclaw, RecordingNotifier, fake_prepare, seed_goal
 
 ACT = json.dumps(
     {"decision": "act", "note": "ship next", "actions": [{"tool": "start_program", "goal": "build /health"}]}
@@ -27,7 +27,8 @@ def _store(tmp_path, clock):
 
 async def _tick(store, goal_id, claude, devclaw, notifier):
     return await tick_goal(
-        goal_id, store=store, devclaw=devclaw, claude_caller=claude, notifier=notifier, notify_url="http://relay"
+        goal_id, store=store, devclaw=devclaw, claude_caller=claude, notifier=notifier,
+        notify_url="http://relay", prepare_ws=fake_prepare,
     )
 
 
@@ -92,6 +93,48 @@ async def test_first_tick_plans_and_dispatches(tmp_path):
     assert saved.phase == "in_flight"
     assert saved.in_flight is not None
     assert any("start_program" in m for m in notifier.sent)
+
+
+@pytest.mark.asyncio
+async def test_workspace_prepped_before_dispatch(tmp_path):
+    clock = Clock()
+    store = _store(tmp_path, clock)
+    seed_goal(tmp_path, "g")
+    claude, devclaw, notifier = FakeClaude(ACT), FakeDevclaw(), RecordingNotifier()
+    calls: list[tuple] = []
+
+    async def rec_prepare(ws, repo_url=None):
+        calls.append((ws, repo_url))
+        return "main"
+
+    out = await tick_goal(
+        "g", store=store, devclaw=devclaw, claude_caller=claude, notifier=notifier,
+        notify_url="", prepare_ws=rec_prepare,
+    )
+    assert out is Outcome.DISPATCHED
+    assert calls == [("/repos/demo", None)]  # prepped the goal's workspace, once
+    assert len(devclaw.dispatched) == 1      # then dispatched
+
+
+@pytest.mark.asyncio
+async def test_idle_tick_does_not_prep_workspace(tmp_path):
+    clock = Clock()
+    store = _store(tmp_path, clock)
+    seed_goal(tmp_path, "g", cadence="1d")
+    store.save_status("g", GoalStatus(phase="idle", last_plan_at=store.now_iso()))
+    claude, devclaw, notifier = FakeClaude(ACT), FakeDevclaw(), RecordingNotifier()
+    calls: list = []
+
+    async def rec_prepare(ws, repo_url=None):
+        calls.append(ws)
+        return "main"
+
+    out = await tick_goal(
+        "g", store=store, devclaw=devclaw, claude_caller=claude, notifier=notifier,
+        prepare_ws=rec_prepare,
+    )
+    assert out is Outcome.IDLE
+    assert calls == []  # no work → no workspace churn
 
 
 @pytest.mark.asyncio

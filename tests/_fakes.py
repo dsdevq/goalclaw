@@ -50,6 +50,11 @@ class RecordingNotifier:
         return True
 
 
+async def fake_prepare(workspace_dir: str, repo_url: str | None = None) -> str:
+    """No-op workspace prep for tick tests (returns the default branch)."""
+    return "main"
+
+
 class Clock:
     """Injectable, advanceable clock."""
 

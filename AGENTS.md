@@ -21,8 +21,10 @@ for the model.
   - `devclaw_client.py` — `HttpDevclawClient` + the `DevclawClient` Protocol. The engine seam.
   - `planner.py` — the plan step (cognition). `plan()` takes an injected `claude_caller`; `validate()` is the JSON contract. Mirrors devclaw's planner.
   - `notify.py` — `HttpNotifier` / `NullNotifier`.
-  - `tick.py` — `tick_goal` / `tick_all`. **The heart.** Cheap-check-first ordering is load-bearing.
-  - `__main__.py` — `python -m goalclaw tick|status`.
+  - `workspace.py` — `prepare_workspace`: pristine checkout of the repo's default branch at latest origin (clone-if-missing, else fetch+hard-reset+clean) before each code action. goalclaw owns the goal↔repo↔workspace lifecycle; devclaw just receives a ready workspace.
+  - `wake.py` — tiny `POST /wake` HTTP server (daemon thread). devclaw's notify_url points here → task-done triggers an immediate tick (event), not just the heartbeat.
+  - `tick.py` — `tick_goal` / `tick_all`. **The heart.** Cheap-check-first ordering is load-bearing. Preps the workspace (injected `prepare_ws`) before dispatching a code action.
+  - `__main__.py` — `python -m goalclaw tick|serve|status`. `serve` = heartbeat + /wake event loop (`wait(wake OR interval) → tick`); the container CMD.
 
 ## Build / run / test (the verify gate)
 
